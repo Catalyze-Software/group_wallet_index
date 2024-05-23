@@ -35,6 +35,8 @@ async fn spawn_multisig(
     icp_transfer_blockheight: u64,
     whitelist: Vec<Principal>,
 ) -> Result<Principal, String> {
+    Store::validate_whitelist(&whitelist)?;
+
     // check if spawn already exists
     if Store::get_spawn(icp_transfer_blockheight).is_ok() {
         return Err(format!(
@@ -114,16 +116,27 @@ async fn spawn_multisig(
     Ok(installed_canister_principal)
 }
 
+#[query]
+pub fn __get_candid_interface_tmp_hack() -> String {
+    use candid::export_service;
+
+    use crate::rust_declarations::types::*;
+    export_service!();
+    __export_service()
+}
+
 #[test]
 pub fn candid() {
-    use candid::export_service;
     use std::env;
     use std::fs::write;
     use std::path::PathBuf;
-    export_service!();
     let dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let dir = dir.parent().unwrap().join("candid");
-    write(dir.join("multisig_index.did"), __export_service()).expect("Write failed.");
+    write(
+        dir.join("multisig_index.did"),
+        __get_candid_interface_tmp_hack(),
+    )
+    .expect("Write failed.");
 }
 
 pub fn is_not_anonymous() -> Result<(), String> {

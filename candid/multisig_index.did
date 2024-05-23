@@ -1,42 +1,26 @@
-type InitializeStatus = variant { Error; Done; Initializing };
 type MultisigData = record {
-  updated_at : nat64;
-  group_identifier : opt principal;
-  canister_id : principal;
+  cmc_blockheight : nat64;
   created_at : nat64;
   created_by : principal;
+  icp_blockheight : nat64;
 };
-type Result = variant { Ok : nat64; Err : text };
+type Result = variant { Ok : SpawnStatus; Err : text };
 type Result_1 = variant { Ok : principal; Err : text };
-type Result_2 = variant { Ok; Err : text };
+type SpawnStatus = record {
+  done : opt null;
+  canister_spawned : opt principal;
+  canister_installed : opt principal;
+  transaction_valid : opt Tokens;
+  min_amount_error : opt nat64;
+  transferred_to_cmc : opt nat64;
+  topped_up_self : opt nat;
+};
 type Tokens = record { e8s : nat64 };
-type TransactionData = record {
-  status : TransactionStatus;
-  cmc_transfer_block_index : opt nat64;
-  cycles_amount : opt nat;
-  error_message : opt text;
-  initialized_by : principal;
-  created_at : nat64;
-  icp_transfer_block_index : nat64;
-  icp_amount : opt Tokens;
-};
-type TransactionStatus = variant {
-  InsufficientIcp;
-  CyclesToIndexFailed;
-  Success;
-  IcpToCmcFailed;
-  IcpToIndexFailed;
-  Pending;
-};
 service : {
-  get_caller_local_balance : () -> (nat64) query;
-  get_cmc_icp_balance : () -> (Result);
+  __get_candid_interface_tmp_hack : () -> (text) query;
   get_cycles : () -> (nat64) query;
-  get_initialization_status : (principal) -> (opt InitializeStatus) query;
-  get_multisig_by_group_identifier : (principal) -> (opt MultisigData) query;
-  get_multisigs : () -> (vec MultisigData) query;
-  get_principal_local_balance : (principal) -> (nat64) query;
-  get_transactions : (opt TransactionStatus) -> (vec TransactionData) query;
-  spawn_multisig : (nat64, principal) -> (Result_1);
-  withdraw_balance : () -> (Result_2);
+  get_multisigs : () -> (vec record { principal; MultisigData }) query;
+  get_spawn : (nat64) -> (Result) query;
+  get_spawns : () -> (vec record { nat64; SpawnStatus }) query;
+  spawn_multisig : (nat64, vec principal) -> (Result_1);
 }

@@ -1,4 +1,4 @@
-use std::{cell::RefCell, convert::TryFrom};
+use std::{cell::RefCell, collections::HashSet, convert::TryFrom};
 
 use candid::{Encode, Nat, Principal};
 use ic_cdk::{
@@ -118,5 +118,23 @@ impl Store {
 
     pub fn save_spawn_status(block_index: u64, status: SpawnStatus) {
         SPAWN_STATUS.with(|s| s.borrow_mut().insert(block_index, status));
+    }
+
+    pub fn validate_whitelist(whitelist: &Vec<Principal>) -> Result<(), String> {
+        if whitelist.len() < 2 {
+            return Err("Whitelist must have at least 2 principals".to_string());
+        }
+
+        // check for duplicate principals
+        let mut seen = HashSet::new();
+
+        for principal in whitelist.iter() {
+            if seen.contains(principal) {
+                return Err(format!("Duplicate principal: {}", principal));
+            }
+            seen.insert(principal);
+        }
+
+        Ok(())
     }
 }
