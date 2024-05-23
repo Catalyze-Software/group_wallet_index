@@ -4,9 +4,9 @@ use ic_ledger_types::MAINNET_CYCLES_MINTING_CANISTER_ID;
 
 use crate::rust_declarations::cmc_service::{CmcService, NotifyTopUpArg, NotifyTopUpResult};
 
-pub struct CMC {}
+pub struct CyclesManagementCanister;
 
-impl CMC {
+impl CyclesManagementCanister {
     pub async fn top_up_self(block_index: u64) -> Result<Nat, String> {
         match CmcService(MAINNET_CYCLES_MINTING_CANISTER_ID)
             .notify_top_up(NotifyTopUpArg {
