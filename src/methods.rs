@@ -1,5 +1,5 @@
 use candid::Principal;
-use ic_cdk::{caller, id, query, update};
+use ic_cdk::{caller, query, update};
 
 use crate::{
     logic::{
@@ -15,26 +15,37 @@ fn get_cycles() -> u64 {
     Store::get_cycles()
 }
 
-#[update]
-async fn get_cmc_icp_balance() -> Result<u64, String> {
-    Store::get_icp_balance(id()).await
+#[query]
+fn get_spawns() -> Vec<(u64, SpawnStatus)> {
+    Store::get_spawns()
 }
 
 #[query]
-fn get_multisigs() -> Vec<MultisigData> {
+fn get_spawn(blockheight: u64) -> Result<SpawnStatus, String> {
+    Store::get_spawn(blockheight)
+}
+
+#[query]
+fn get_multisigs() -> Vec<(Principal, MultisigData)> {
     Store::get_multisigs()
 }
 
-#[update]
+#[update(guard = "is_not_anonymous")]
 async fn spawn_multisig(
     icp_transfer_blockheight: u64,
     whitelist: Vec<Principal>,
 ) -> Result<Principal, String> {
     // check if spawn already exists
-    Store::check_spawn_exists(icp_transfer_blockheight)?;
+    if Store::get_spawn(icp_transfer_blockheight).is_ok() {
+        return Err(format!(
+            "Duplicate blockheight: {}",
+            icp_transfer_blockheight
+        ));
+    }
 
     // initialize new spawn status tracker
     let mut spawn_status = SpawnStatus::new();
+    Store::save_spawn_status(icp_transfer_blockheight, spawn_status.clone());
 
     // validate ICP transaction
     let amount = Ledger::validate_transaction(caller(), icp_transfer_blockheight).await?;
@@ -113,4 +124,11 @@ pub fn candid() {
     let dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let dir = dir.parent().unwrap().join("candid");
     write(dir.join("multisig_index.did"), __export_service()).expect("Write failed.");
+}
+
+pub fn is_not_anonymous() -> Result<(), String> {
+    match caller() == Principal::anonymous() {
+        true => Err("Anonymous principal".to_string()),
+        false => Ok(()),
+    }
 }

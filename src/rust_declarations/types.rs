@@ -9,7 +9,6 @@ use ic_stable_structures::{storable::Bound, Storable};
 
 #[derive(CandidType, Deserialize, Clone, Debug)]
 pub struct MultisigData {
-    canister_id: Principal,
     created_by: Principal,
     created_at: u64,
     icp_blockheight: u64,
@@ -17,9 +16,8 @@ pub struct MultisigData {
 }
 
 impl MultisigData {
-    pub fn new(canister_id: Principal, icp_blockheight: u64, cmc_blockheight: u64) -> Self {
+    pub fn new(icp_blockheight: u64, cmc_blockheight: u64) -> Self {
         Self {
-            canister_id,
             created_by: caller(),
             created_at: time(),
             icp_blockheight,

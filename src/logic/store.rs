@@ -11,10 +11,7 @@ use ic_cdk::{
     },
     id,
 };
-use ic_ledger_types::{
-    account_balance, AccountBalanceArgs, AccountIdentifier, Memo, Tokens, DEFAULT_SUBACCOUNT,
-    MAINNET_LEDGER_CANISTER_ID,
-};
+use ic_ledger_types::{Memo, Tokens};
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
     {DefaultMemoryImpl, StableBTreeMap},
@@ -56,23 +53,8 @@ impl Store {
         ic_cdk::api::canister_balance()
     }
 
-    pub fn get_multisigs() -> Vec<MultisigData> {
-        ENTRIES.with(|e| e.borrow().iter().map(|(_, v)| v.clone()).collect())
-    }
-
-    pub async fn get_icp_balance(caller: Principal) -> Result<u64, String> {
-        let result = account_balance(
-            MAINNET_LEDGER_CANISTER_ID,
-            AccountBalanceArgs {
-                account: AccountIdentifier::new(&caller, &DEFAULT_SUBACCOUNT),
-            },
-        )
-        .await;
-
-        match result {
-            Ok(balance) => Ok(balance.e8s()),
-            Err((_, err)) => Err(err),
-        }
+    pub fn get_multisigs() -> Vec<(Principal, MultisigData)> {
+        ENTRIES.with(|e| e.borrow().iter().collect())
     }
 
     pub async fn spawn_canister(cycles: Nat) -> Result<Principal, String> {
@@ -118,23 +100,16 @@ impl Store {
         icp_transfer_blockheight: u64,
         cmc_transfer_block_height: u64,
     ) {
-        let multisig = MultisigData::new(
-            canister_id,
-            icp_transfer_blockheight,
-            cmc_transfer_block_height,
-        );
+        let multisig = MultisigData::new(icp_transfer_blockheight, cmc_transfer_block_height);
         ENTRIES.with(|e| e.borrow_mut().insert(canister_id, multisig));
     }
 
-    pub fn check_spawn_exists(block_index: u64) -> Result<(), String> {
-        if SPAWN_STATUS.with(|s| s.borrow().contains_key(&block_index)) {
-            return Err("Error: blockheight already used".to_string());
-        }
-        Ok(())
-    }
-
-    pub fn get_spawn(blockheight: u64) -> Option<SpawnStatus> {
-        SPAWN_STATUS.with(|s| s.borrow().get(&blockheight))
+    pub fn get_spawn(blockheight: u64) -> Result<SpawnStatus, String> {
+        SPAWN_STATUS.with(|s| {
+            s.borrow()
+                .get(&blockheight)
+                .ok_or_else(|| "Error: blockheight not found".to_string())
+        })
     }
 
     pub fn get_spawns() -> Vec<(u64, SpawnStatus)> {
