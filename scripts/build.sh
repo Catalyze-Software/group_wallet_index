@@ -1,13 +1,13 @@
-# Build script multisig_index canister
+# Build script wallet_index canister
 
 # Generate candid
-cargo test candid -p multisig_index
+cargo test candid -p wallet_index
 
 # Build wasm
-cargo build -p multisig_index --release --target wasm32-unknown-unknown
+cargo build -p wallet_index --release --target wasm32-unknown-unknown
 
 # Gzip wasm
-gzip -c target/wasm32-unknown-unknown/release/multisig_index.wasm > target/wasm32-unknown-unknown/release/multisig_index.wasm.gz
+gzip -c target/wasm32-unknown-unknown/release/wallet_index.wasm > target/wasm32-unknown-unknown/release/wallet_index.wasm.gz
 
 # Copy wasm
-cp target/wasm32-unknown-unknown/release/multisig_index.wasm.gz wasm/multisig_index.wasm.gz
+cp target/wasm32-unknown-unknown/release/wallet_index.wasm.gz wasm/wallet_index.wasm.gz

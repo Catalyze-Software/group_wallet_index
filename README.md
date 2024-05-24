@@ -1,14 +1,14 @@
 # My Rust Project
 
-This project is a Rust application that provides a set of query and update functions for managing spawns and multisigs.
+This project is a Rust application that provides a set of query and update functions for managing spawns and wallets.
 
 ## Features
 
 - Query the number of cycles
 - Query all spawns
 - Query a specific spawn based on blockheight
-- Query all multisigs
-- Spawn a multisig with a whitelist of principals
+- Query all wallets
+- Spawn a wallet with a whitelist of principals
 
 ## Methods
 
@@ -24,11 +24,11 @@ This method returns a vector of tuples containing a `u64` and `SpawnStatus`.
 
 This method returns a `SpawnStatus` or a `String` error. It retrieves a specific spawn based on the blockheight.
 
-### `get_multisigs() -> Vec<(Principal, MultisigData)>`
+### `get_wallets() -> Vec<(Principal, MultisigData)>`
 
 This method returns a vector of tuples containing a `Principal` and `MultisigData`.
 
-### `spawn_multisig(icp_transfer_blockheight: u64, whitelist: Vec<Principal>) -> Result<Principal, String>`
+### `spawn_wallet(icp_transfer_blockheight: u64, whitelist: Vec<Principal>) -> Result<Principal, String>`
 
 This method spawns a multisig with a whitelist of principals. It includes:
 

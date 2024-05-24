@@ -32,18 +32,21 @@ impl Ledger {
         }
     }
 
-    pub async fn transfer_icp_to_cmc(amount: Tokens) -> Result<u64, String> {
+    pub async fn transfer_icp_to_cmc(
+        amount: Tokens,
+        canister_id: Principal,
+    ) -> Result<u64, String> {
         let catalyze_amount = CATALYZE_E8S_FEE - ICP_TRANSACTION_FEE;
-        let multisig_amount = amount - ICP_TRANSACTION_FEE - catalyze_amount;
+        let wallet_amount = amount - ICP_TRANSACTION_FEE - catalyze_amount;
 
         let multig_spinup_ledger_args = TransferArgs {
             memo: MEMO_TOP_UP_CANISTER,
-            amount: multisig_amount,
+            amount: wallet_amount,
             fee: ICP_TRANSACTION_FEE,
             from_subaccount: None,
             to: AccountIdentifier::new(
                 &MAINNET_CYCLES_MINTING_CANISTER_ID,
-                &Subaccount::from(id()),
+                &Subaccount::from(canister_id),
             ),
             created_at_time: None,
         };

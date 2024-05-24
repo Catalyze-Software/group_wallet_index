@@ -8,25 +8,38 @@ use candid::{Decode, Encode};
 use ic_stable_structures::{storable::Bound, Storable};
 
 #[derive(CandidType, Deserialize, Clone, Debug)]
-pub struct MultisigData {
+pub struct WalletData {
     created_by: Principal,
+    owner: Principal,
     created_at: u64,
+    updated_at: u64,
     icp_blockheight: u64,
     cmc_blockheight: u64,
 }
 
-impl MultisigData {
+impl WalletData {
     pub fn new(icp_blockheight: u64, cmc_blockheight: u64) -> Self {
         Self {
             created_by: caller(),
+            owner: caller(),
             created_at: time(),
+            updated_at: time(),
             icp_blockheight,
             cmc_blockheight,
         }
     }
+
+    pub fn is_owner(&self, principal: Principal) -> bool {
+        self.owner == principal
+    }
+
+    pub fn set_owner(&mut self, owner: Principal) -> Self {
+        self.owner = owner;
+        self.clone()
+    }
 }
 
-impl Storable for MultisigData {
+impl Storable for WalletData {
     fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
         Cow::Owned(Encode!(self).unwrap())
     }
@@ -39,7 +52,8 @@ impl Storable for MultisigData {
 }
 
 #[derive(CandidType, Deserialize, Clone, Debug)]
-pub struct SpawnStatus {
+pub struct Status {
+    status_type: Option<String>,
     transaction_valid: Option<Tokens>,
     min_amount_error: Option<u64>,
     transferred_to_cmc: Option<u64>,
@@ -49,15 +63,16 @@ pub struct SpawnStatus {
     done: Option<()>,
 }
 
-impl Default for SpawnStatus {
+impl Default for Status {
     fn default() -> Self {
-        Self::new()
+        Self::new(None)
     }
 }
 
-impl SpawnStatus {
-    pub fn new() -> Self {
+impl Status {
+    pub fn new(status_type: Option<String>) -> Self {
         Self {
+            status_type,
             transaction_valid: None,
             min_amount_error: None,
             transferred_to_cmc: None,
@@ -104,7 +119,7 @@ impl SpawnStatus {
     }
 }
 
-impl Storable for SpawnStatus {
+impl Storable for Status {
     fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
         Cow::Owned(Encode!(self).unwrap())
     }

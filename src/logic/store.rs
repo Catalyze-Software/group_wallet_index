@@ -2,14 +2,17 @@ use std::{cell::RefCell, collections::HashSet, convert::TryFrom};
 
 use candid::{Encode, Nat, Principal};
 use ic_cdk::{
-    api::management_canister::{
-        main::{
-            create_canister, install_code, CanisterInstallMode, CreateCanisterArgument,
-            InstallCodeArgument,
+    api::{
+        call::{self, RejectionCode},
+        management_canister::{
+            main::{
+                create_canister, install_code, CanisterInstallMode, CreateCanisterArgument,
+                InstallCodeArgument,
+            },
+            provisional::CanisterSettings,
         },
-        provisional::CanisterSettings,
     },
-    id,
+    caller, id,
 };
 use ic_ledger_types::{Memo, Tokens};
 use ic_stable_structures::{
@@ -17,7 +20,7 @@ use ic_stable_structures::{
     {DefaultMemoryImpl, StableBTreeMap},
 };
 
-use crate::rust_declarations::types::{MultisigData, SpawnStatus};
+use crate::rust_declarations::types::{Status, WalletData};
 
 type Memory = VirtualMemory<DefaultMemoryImpl>;
 
@@ -33,13 +36,13 @@ thread_local! {
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
 
 
-    pub static ENTRIES: RefCell<StableBTreeMap<Principal, MultisigData, Memory>> = RefCell::new(
+    pub static ENTRIES: RefCell<StableBTreeMap<Principal, WalletData, Memory>> = RefCell::new(
         StableBTreeMap::init(
             MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(0))),
         )
     );
 
-    pub static SPAWN_STATUS: RefCell<StableBTreeMap<u64, SpawnStatus, Memory>> = RefCell::new(
+    pub static SPAWN_STATUS: RefCell<StableBTreeMap<u64, Status, Memory>> = RefCell::new(
         StableBTreeMap::init(
             MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(3))),
         )
@@ -53,7 +56,7 @@ impl Store {
         ic_cdk::api::canister_balance()
     }
 
-    pub fn get_multisigs() -> Vec<(Principal, MultisigData)> {
+    pub fn get_wallets() -> Vec<(Principal, WalletData)> {
         ENTRIES.with(|e| e.borrow().iter().collect())
     }
 
@@ -65,6 +68,7 @@ impl Store {
                 memory_allocation: None,
                 freezing_threshold: None,
                 reserved_cycles_limit: None,
+                wasm_memory_limit: None,
             }),
         };
 
@@ -79,12 +83,12 @@ impl Store {
         canister_id: Principal,
         whitelist: Vec<Principal>,
     ) -> Result<Principal, String> {
-        let multisig_wasm = include_bytes!("../../wasm/multisig.wasm.gz");
+        let wallet_wasm = include_bytes!("../../wasm/wallet.wasm.gz");
 
         let args = InstallCodeArgument {
             mode: CanisterInstallMode::Install,
             canister_id,
-            wasm_module: multisig_wasm.to_vec(),
+            wasm_module: wallet_wasm.to_vec(),
             arg: Encode!((&whitelist)).unwrap(),
         };
         let result = install_code(args).await;
@@ -95,16 +99,16 @@ impl Store {
         }
     }
 
-    pub fn save_multisig(
+    pub fn save_wallet(
         canister_id: Principal,
         icp_transfer_blockheight: u64,
         cmc_transfer_block_height: u64,
     ) {
-        let multisig = MultisigData::new(icp_transfer_blockheight, cmc_transfer_block_height);
-        ENTRIES.with(|e| e.borrow_mut().insert(canister_id, multisig));
+        let wallet = WalletData::new(icp_transfer_blockheight, cmc_transfer_block_height);
+        ENTRIES.with(|e| e.borrow_mut().insert(canister_id, wallet));
     }
 
-    pub fn get_spawn(blockheight: u64) -> Result<SpawnStatus, String> {
+    pub fn get_spawn(blockheight: u64) -> Result<Status, String> {
         SPAWN_STATUS.with(|s| {
             s.borrow()
                 .get(&blockheight)
@@ -112,11 +116,11 @@ impl Store {
         })
     }
 
-    pub fn get_spawns() -> Vec<(u64, SpawnStatus)> {
+    pub fn get_spawns() -> Vec<(u64, Status)> {
         SPAWN_STATUS.with(|s| s.borrow().iter().collect())
     }
 
-    pub fn save_spawn_status(block_index: u64, status: SpawnStatus) {
+    pub fn save_status(block_index: u64, status: Status) {
         SPAWN_STATUS.with(|s| s.borrow_mut().insert(block_index, status));
     }
 
@@ -134,6 +138,43 @@ impl Store {
             }
             seen.insert(principal);
         }
+
+        Ok(())
+    }
+
+    pub async fn transfer_ownership(
+        canister_id: Principal,
+        new_owner: Principal,
+    ) -> Result<(), String> {
+        // Get the wallet
+        let mut wallet = ENTRIES.with(|e| {
+            e.borrow()
+                .get(&canister_id)
+                .ok_or_else(|| format!("Error: Canister not found: {}", canister_id))
+        })?;
+
+        // Check if the caller is the owner
+        if !wallet.is_owner(caller()) {
+            return Err("Error: Caller is not the owner".to_string());
+        }
+
+        // Call the canister to set the new owner
+        let call_result: Result<(Result<Principal, String>,), (RejectionCode, String)> =
+            call::call(canister_id, "set_owner", (new_owner,)).await;
+
+        // Check if the call was successful
+        let call_result = match call_result {
+            Err((_, err)) => Err(err),
+            Ok(res) => res.0,
+        };
+
+        // get the wallet canister id from the result
+        let wallet_canister_id = call_result?;
+
+        ENTRIES.with(|e| {
+            e.borrow_mut()
+                .insert(wallet_canister_id, wallet.set_owner(new_owner));
+        });
 
         Ok(())
     }
