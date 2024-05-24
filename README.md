@@ -1,38 +1,27 @@
-# My Rust Project
+# Wallet Index Canister
 
-This project is a Rust application that provides a set of query and update functions for managing spawns and wallets.
+This project is a Rust application that serves as an index canister for managing wallet canisters on the Internet Computer. It provides a set of functions for creating wallet canisters, topping up canisters with cycles by converting ICP (Internet Computer Protocol) tokens to cycles, and querying the status of these operations.
 
 ## Features
 
-- Query the number of cycles
-- Query all spawns
-- Query a specific spawn based on blockheight
-- Query all wallets
-- Spawn a wallet with a whitelist of principals
+### Wallet Canister Management
 
-## Methods
+The index canister can create new wallet canisters with the `spawn_wallet` function. This function takes a blockheight of the ICP transfer and a whitelist of principals as arguments. It validates the whitelist, checks if a spawn already exists for the given blockheight, initializes a new spawn status tracker, and saves the spawn status after initialization.
 
-### `get_cycles() -> u64`
+### ICP to Cycles Conversion
 
-This method returns the number of cycles.
+The index canister can top up canisters with cycles by converting ICP tokens to cycles with the `top_up_wallet` function. This function takes a blockheight of the ICP transfer and the principal of the wallet to be topped up as arguments. It checks if a spawn already exists for the given blockheight, initializes a new status tracker, validates the ICP transaction, updates the status tracker with the transaction amount, transfers the ICP to the cycles management canister, and updates the status tracker with the blockheight of the transfer.
 
-### `get_spawns() -> Vec<(u64, SpawnStatus)>`
+### Query Functions
 
-This method returns a vector of tuples containing a `u64` and `SpawnStatus`.
+The index canister provides several query functions for retrieving the number of cycles, all spawns, a specific spawn based on blockheight, and all wallets.
 
-### `get_spawn(blockheight: u64) -> Result<SpawnStatus, String>`
+## How to Run
 
-This method returns a `SpawnStatus` or a `String` error. It retrieves a specific spawn based on the blockheight.
+To run this project, you need to have Rust installed on your machine. Once you have Rust installed, you can clone this repository and run the application with the following commands:
 
-### `get_wallets() -> Vec<(Principal, MultisigData)>`
-
-This method returns a vector of tuples containing a `Principal` and `MultisigData`.
-
-### `spawn_wallet(icp_transfer_blockheight: u64, whitelist: Vec<Principal>) -> Result<Principal, String>`
-
-This method spawns a multisig with a whitelist of principals. It includes:
-
-- Validation of the whitelist.
-- Check if a spawn already exists for the given blockheight.
-- Initialization of a new spawn status tracker.
-- Saving of the spawn status after initialization.
+```bash
+git clone <repository-url>
+cd <repository-name>
+cargo run
+```
