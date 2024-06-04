@@ -3,6 +3,7 @@ pub mod methods;
 pub mod logic {
     pub mod cmc;
     pub mod ledger;
+    pub mod proxy_notifications;
     pub mod store;
 }
 pub mod rust_declarations {

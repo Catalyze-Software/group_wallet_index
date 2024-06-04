@@ -60,6 +60,10 @@ impl Store {
         ENTRIES.with(|e| e.borrow().iter().collect())
     }
 
+    pub fn get_wallet(principal: &Principal) -> Option<WalletData> {
+        ENTRIES.with(|e| e.borrow().get(principal).clone())
+    }
+
     pub async fn spawn_canister(cycles: Nat) -> Result<Principal, String> {
         let args = CreateCanisterArgument {
             settings: Some(CanisterSettings {
