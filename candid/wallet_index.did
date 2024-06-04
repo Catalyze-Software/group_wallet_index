@@ -22,10 +22,28 @@ type WalletData = record {
 };
 service : {
   __get_candid_interface_tmp_hack : () -> (text) query;
+  _dev_add_wallet : (principal) -> (opt WalletData);
   get_cycles : () -> (nat64) query;
   get_spawn : (nat64) -> (Result) query;
   get_spawns : () -> (vec record { nat64; Status }) query;
   get_wallets : () -> (vec record { principal; WalletData }) query;
+  multisig_new_proposal_notification : (vec principal, nat64, principal) -> ();
+  multisig_proposal_accept_notification : (
+      vec principal,
+      nat64,
+      principal,
+    ) -> ();
+  multisig_proposal_decline_notification : (
+      vec principal,
+      nat64,
+      principal,
+    ) -> ();
+  multisig_proposal_status_update_notification : (
+      vec principal,
+      nat64,
+      principal,
+    ) -> ();
+  multisig_whitelist_notice_notification : (vec principal, principal) -> ();
   spawn_wallet : (nat64, vec principal) -> (Result_1);
   top_up_wallet : (nat64, principal) -> (Result_2);
   transfer_ownership : (principal, principal) -> (Result_2);
