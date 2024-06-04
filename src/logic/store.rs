@@ -163,10 +163,7 @@ impl Store {
             call::call(canister_id, "set_owner", (new_owner,)).await;
 
         // Check if the call was successful
-        let call_result = match call_result {
-            Err((_, err)) => Err(err),
-            Ok(res) => res.0,
-        };
+        let call_result = call_result.map_err(|(_, err)| err)?.0;
 
         // get the wallet canister id from the result
         let wallet_canister_id = call_result?;

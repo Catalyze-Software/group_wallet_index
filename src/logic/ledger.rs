@@ -23,13 +23,12 @@ impl Ledger {
             created_at_time: None,
         };
 
-        match transfer(MAINNET_LEDGER_CANISTER_ID, transfer_back_args).await {
-            Ok(result) => match result {
-                Ok(block_index) => Ok(block_index),
-                Err(err) => Err(err.to_string()),
-            },
-            Err((_, err)) => Err(err),
-        }
+        let blockheight = transfer(MAINNET_LEDGER_CANISTER_ID, transfer_back_args)
+            .await
+            .map_err(|e| e.1)?
+            .map_err(|e| e.to_string())?;
+
+        Ok(blockheight)
     }
 
     pub async fn transfer_icp_to_cmc(
@@ -51,13 +50,12 @@ impl Ledger {
             created_at_time: None,
         };
 
-        match transfer(MAINNET_LEDGER_CANISTER_ID, multig_spinup_ledger_args).await {
-            Ok(result) => match result {
-                Ok(block_index) => Ok(block_index),
-                Err(err) => Err(err.to_string()),
-            },
-            Err((_, err)) => Err(err),
-        }
+        let blockheight = transfer(MAINNET_LEDGER_CANISTER_ID, multig_spinup_ledger_args)
+            .await
+            .map_err(|e| e.1)?
+            .map_err(|e| e.to_string())?;
+
+        Ok(blockheight)
     }
 
     // This method checks if the transaction is send and received from the given principal
@@ -71,28 +69,25 @@ impl Ledger {
             .ok_or("Block not found".to_string())?;
 
         // Check if the block has a transaction
-        if let Some(operation) = block.transaction.operation {
-            if let ic_ledger_types::Operation::Transfer {
-                from,
-                to,
-                amount,
-                fee: _, // Ignore fee
-            } = operation
-            {
-                if from != Self::principal_to_account_identifier(principal) {
-                    return Err("Transaction not from the given principal".to_string());
+        match block.transaction.operation {
+            Some(op) => match op {
+                ic_ledger_types::Operation::Transfer {
+                    from,
+                    to,
+                    amount,
+                    fee: _,
+                } => {
+                    if from != Self::principal_to_account_identifier(principal) {
+                        return Err("Transaction not from the given principal".to_string());
+                    }
+                    if to != Self::principal_to_account_identifier(id()) {
+                        return Err("Transaction not to the given principal".to_string());
+                    }
+                    Ok(amount)
                 }
-                if to != Self::principal_to_account_identifier(id()) {
-                    return Err("Transaction not to the given principal".to_string());
-                }
-                Ok(amount)
-            } else {
-                // Not a transfer
-                Err("Not a transfer".to_string())
-            }
-        } else {
-            // No operation
-            Err("No operation".to_string())
+                _ => Err("Not a transfer".to_string()),
+            },
+            None => Err("No transaction".to_string()),
         }
     }
 
@@ -114,13 +109,11 @@ impl Ledger {
         if let Some(func) = blocks_result.archived_blocks.into_iter().find_map(|b| {
             (b.start <= block_index && (block_index - b.start) < b.length).then_some(b.callback)
         }) {
-            match query_archived_blocks(&func, args).await {
-                Ok(range) => match range {
-                    Ok(_range) => return _range.blocks.into_iter().next(),
-                    Err(_) => return None,
-                },
-                Err(_) => return None,
-            }
+            query_archived_blocks(&func, args)
+                .await
+                .ok()?
+                .map_err(|e| e.to_string())
+                .ok();
         }
 
         None
