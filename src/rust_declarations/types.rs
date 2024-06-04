@@ -1,4 +1,5 @@
 use candid::{CandidType, Nat, Principal};
+use ic_cdk::{api::time, caller};
 use ic_ledger_types::Tokens;
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -7,67 +8,38 @@ use candid::{Decode, Encode};
 use ic_stable_structures::{storable::Bound, Storable};
 
 #[derive(CandidType, Deserialize, Clone, Debug)]
-pub struct MultisigData {
-    pub canister_id: Principal,
-    pub group_identifier: Option<Principal>,
-    pub created_by: Principal,
-    pub created_at: u64,
-    pub updated_at: u64,
+pub struct WalletData {
+    created_by: Principal,
+    owner: Principal,
+    created_at: u64,
+    updated_at: u64,
+    icp_blockheight: u64,
+    cmc_blockheight: u64,
 }
 
-impl Storable for MultisigData {
-    fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
-        Cow::Owned(Encode!(self).unwrap())
+impl WalletData {
+    pub fn new(icp_blockheight: u64, cmc_blockheight: u64) -> Self {
+        Self {
+            created_by: caller(),
+            owner: caller(),
+            created_at: time(),
+            updated_at: time(),
+            icp_blockheight,
+            cmc_blockheight,
+        }
     }
 
-    fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
-        Decode!(bytes.as_ref(), Self).unwrap()
+    pub fn is_owner(&self, principal: Principal) -> bool {
+        self.owner == principal
     }
 
-    const BOUND: Bound = Bound::Unbounded;
-}
-#[derive(CandidType, Deserialize, Clone, Debug, PartialEq, Eq)]
-pub enum InitializeStatus {
-    Initializing,
-    Done,
-    Error,
-}
-
-impl Storable for InitializeStatus {
-    fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
-        Cow::Owned(Encode!(self).unwrap())
+    pub fn set_owner(&mut self, owner: Principal) -> Self {
+        self.owner = owner;
+        self.clone()
     }
-
-    fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
-        Decode!(bytes.as_ref(), Self).unwrap()
-    }
-
-    const BOUND: Bound = Bound::Unbounded;
 }
 
-#[derive(CandidType, Deserialize, Clone, Debug, PartialEq)]
-pub enum TransactionStatus {
-    IcpToIndexFailed,
-    IcpToCmcFailed,
-    CyclesToIndexFailed,
-    InsufficientIcp,
-    Success,
-    Pending,
-}
-
-#[derive(CandidType, Deserialize, Clone, Debug)]
-pub struct TransactionData {
-    pub icp_transfer_block_index: u64,
-    pub cmc_transfer_block_index: Option<u64>,
-    pub icp_amount: Option<Tokens>,
-    pub cycles_amount: Option<Nat>,
-    pub initialized_by: Principal,
-    pub created_at: u64,
-    pub status: TransactionStatus,
-    pub error_message: Option<String>,
-}
-
-impl Storable for TransactionData {
+impl Storable for WalletData {
     fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
         Cow::Owned(Encode!(self).unwrap())
     }
@@ -80,13 +52,81 @@ impl Storable for TransactionData {
 }
 
 #[derive(CandidType, Deserialize, Clone, Debug)]
-pub enum UpdateCycleBalanceArgs {
-    Add(Nat),
-    Subtract(Nat),
+pub struct Status {
+    status_type: Option<String>,
+    transaction_valid: Option<Tokens>,
+    min_amount_error: Option<u64>,
+    transferred_to_cmc: Option<u64>,
+    topped_up_self: Option<Nat>,
+    canister_spawned: Option<Principal>,
+    canister_installed: Option<Principal>,
+    done: Option<()>,
 }
 
-#[derive(CandidType, Deserialize, Clone, Debug)]
-pub enum UpdateIcpBalanceArgs {
-    Add(Tokens),
-    Subtract(Tokens),
+impl Default for Status {
+    fn default() -> Self {
+        Self::new(None)
+    }
+}
+
+impl Status {
+    pub fn new(status_type: Option<String>) -> Self {
+        Self {
+            status_type,
+            transaction_valid: None,
+            min_amount_error: None,
+            transferred_to_cmc: None,
+            topped_up_self: None,
+            canister_spawned: None,
+            canister_installed: None,
+            done: None,
+        }
+    }
+
+    pub fn transaction_valid(&mut self, amount: Tokens) -> Self {
+        self.transaction_valid = Some(amount);
+        self.clone()
+    }
+
+    pub fn min_amount_error(&mut self, block_index: u64) -> Self {
+        self.min_amount_error = Some(block_index);
+        self.clone()
+    }
+
+    pub fn transferred_to_cmc(&mut self, block_index: u64) -> Self {
+        self.transferred_to_cmc = Some(block_index);
+        self.clone()
+    }
+
+    pub fn topped_up_self(&mut self, cycles: Nat) -> Self {
+        self.topped_up_self = Some(cycles);
+        self.clone()
+    }
+
+    pub fn canister_spawned(&mut self, canister_id: Principal) -> Self {
+        self.canister_spawned = Some(canister_id);
+        self.clone()
+    }
+
+    pub fn canister_installed(&mut self, canister_id: Principal) -> Self {
+        self.canister_installed = Some(canister_id);
+        self.clone()
+    }
+
+    pub fn done(&mut self) -> Self {
+        self.done = Some(());
+        self.clone()
+    }
+}
+
+impl Storable for Status {
+    fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
+        Cow::Owned(Encode!(self).unwrap())
+    }
+
+    fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
+        Decode!(bytes.as_ref(), Self).unwrap()
+    }
+
+    const BOUND: Bound = Bound::Unbounded;
 }

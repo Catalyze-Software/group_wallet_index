@@ -1,8 +1,9 @@
-use std::{cell::RefCell, convert::TryFrom};
+use std::{cell::RefCell, collections::HashSet, convert::TryFrom};
 
 use candid::{Encode, Nat, Principal};
 use ic_cdk::{
     api::{
+        call::{self, RejectionCode},
         management_canister::{
             main::{
                 create_canister, install_code, CanisterInstallMode, CreateCanisterArgument,
@@ -10,24 +11,16 @@ use ic_cdk::{
             },
             provisional::CanisterSettings,
         },
-        time,
     },
-    id,
+    caller, id,
 };
-use ic_ledger_types::{
-    account_balance, AccountBalanceArgs, AccountIdentifier, Memo, Subaccount, Tokens, TransferArgs,
-    DEFAULT_SUBACCOUNT, MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
-};
+use ic_ledger_types::{Memo, Tokens};
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
     {DefaultMemoryImpl, StableBTreeMap},
 };
 
-use crate::rust_declarations::types::{
-    InitializeStatus, MultisigData, TransactionData, TransactionStatus, UpdateIcpBalanceArgs,
-};
-
-use super::{cmc::CMC, ledger::Ledger};
+use crate::rust_declarations::types::{Status, WalletData};
 
 type Memory = VirtualMemory<DefaultMemoryImpl>;
 
@@ -43,25 +36,13 @@ thread_local! {
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
 
 
-    pub static ENTRIES: RefCell<StableBTreeMap<String, MultisigData, Memory>> = RefCell::new(
+    pub static ENTRIES: RefCell<StableBTreeMap<Principal, WalletData, Memory>> = RefCell::new(
         StableBTreeMap::init(
             MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(0))),
         )
     );
 
-    pub static TRANSACTIONS: RefCell<StableBTreeMap<u64, TransactionData, Memory>> = RefCell::new(
-        StableBTreeMap::init(
-            MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(1))),
-        )
-    );
-
-    pub static CALLER_ICP_BALANCE: RefCell<StableBTreeMap<String, u64, Memory>> = RefCell::new(
-        StableBTreeMap::init(
-            MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(2))),
-        )
-    );
-
-    pub static INITIALIZING: RefCell<StableBTreeMap<String, InitializeStatus, Memory>> = RefCell::new(
+    pub static SPAWN_STATUS: RefCell<StableBTreeMap<u64, Status, Memory>> = RefCell::new(
         StableBTreeMap::init(
             MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(3))),
         )
@@ -75,261 +56,8 @@ impl Store {
         ic_cdk::api::canister_balance()
     }
 
-    pub fn get_multisigs() -> Vec<MultisigData> {
-        ENTRIES.with(|e| e.borrow().iter().map(|(_, v)| v.clone()).collect())
-    }
-
-    pub fn get_multisig_by_group_identifier(group_identifier: Principal) -> Option<MultisigData> {
-        ENTRIES.with(|e| {
-            e.borrow()
-                .iter()
-                .find(|(_, v)| {
-                    if let Some(_group_identifier) = v.group_identifier.clone() {
-                        _group_identifier == group_identifier
-                    } else {
-                        false
-                    }
-                })
-                .map(|(_, v)| v.clone())
-        })
-    }
-
-    pub async fn get_icp_balance(caller: Principal) -> Result<u64, String> {
-        let result = account_balance(
-            MAINNET_LEDGER_CANISTER_ID,
-            AccountBalanceArgs {
-                account: AccountIdentifier::new(&caller, &DEFAULT_SUBACCOUNT),
-            },
-        )
-        .await;
-
-        match result {
-            Ok(balance) => Ok(balance.e8s()),
-            Err((_, err)) => Err(err),
-        }
-    }
-
-    pub fn get_caller_local_icp_balance(caller: Principal) -> u64 {
-        CALLER_ICP_BALANCE.with(|c| {
-            let balance = c.borrow();
-            balance.get(&caller.to_string()).unwrap_or(0)
-        })
-    }
-
-    pub fn get_transactions(status: Option<TransactionStatus>) -> Vec<TransactionData> {
-        TRANSACTIONS.with(|t| {
-            t.borrow()
-                .iter()
-                .filter(|(_, v)| {
-                    if let Some(_status) = status.clone() {
-                        v.status == _status
-                    } else {
-                        true
-                    }
-                })
-                .map(|(_, v)| v.clone())
-                .collect()
-        })
-    }
-
-    pub fn is_valid_block(block_index: u64) -> bool {
-        TRANSACTIONS.with(|t| {
-            if let Some(transaction) = t.borrow().get(&block_index) {
-                return match transaction.status {
-                    TransactionStatus::IcpToCmcFailed => true,
-                    TransactionStatus::InsufficientIcp => true,
-                    _ => false,
-                };
-            } else {
-                return true;
-            }
-        })
-    }
-
-    pub async fn top_up_self(caller: Principal, icp_block_index: u64) -> Result<Nat, String> {
-        // check if the block is already used
-        if !Self::is_valid_block(icp_block_index) {
-            return Err("Transaction already processed".to_string());
-        }
-
-        // initialize a base transaction data object where the field are set per case
-        let mut transaction_data = TransactionData {
-            icp_transfer_block_index: icp_block_index,
-            cmc_transfer_block_index: None,
-            icp_amount: None,
-            cycles_amount: None,
-            initialized_by: caller,
-            created_at: time(),
-            status: TransactionStatus::Pending,
-            error_message: None,
-        };
-
-        // validate the transaction done from the user to this canister and return the amount
-        match Ledger::validate_transaction(caller, icp_block_index).await {
-            // If the transaction from the user to this canister is valid, return the amount
-            Ok(amount) => {
-                // add the amount to the callers balance
-                Self::update_caller_icp_balance(&caller, UpdateIcpBalanceArgs::Add(amount));
-
-                // Check if the transfer amount is lower as the minimum amount needed to spin up a canister
-                if amount < MIN_E8S_FOR_SPINUP {
-                    // In case the transfer amount is to low, check if the caller has enough previous balance to spin up a canister
-                    let prev_amount = Tokens::from_e8s(Self::get_caller_local_icp_balance(caller));
-
-                    // if the transfered amount + the previous balance is still to low, return an error
-                    if (amount + prev_amount) < MIN_E8S_FOR_SPINUP {
-                        transaction_data.icp_amount = Some(amount);
-                        transaction_data.status = TransactionStatus::InsufficientIcp;
-                        transaction_data.error_message =
-                            Some("Amount too low to spin up a canister".to_string());
-                        Self::insert_transaction_data(icp_block_index, transaction_data);
-                        return Err("Amount too low to spin up a canister".to_string());
-                    }
-                }
-
-                let catalyze_amount = CATALYZE_E8S_FEE - ICP_TRANSACTION_FEE;
-                let multisig_amount = MIN_E8S_FOR_SPINUP - ICP_TRANSACTION_FEE - catalyze_amount;
-
-                // Create the ledger arguments needed for the transfer call to the ledger canister
-                let multig_spinup_ledger_args = TransferArgs {
-                    memo: MEMO_TOP_UP_CANISTER,
-                    amount: multisig_amount,
-                    fee: ICP_TRANSACTION_FEE,
-                    from_subaccount: None,
-                    to: AccountIdentifier::new(
-                        &MAINNET_CYCLES_MINTING_CANISTER_ID,
-                        &Subaccount::from(id()),
-                    ),
-                    created_at_time: None,
-                };
-
-                // Pass the amount received from the user, from this canister to the cycles management canister (minus the fee)
-                match Ledger::transfer_icp(multig_spinup_ledger_args).await {
-                    // If the transaction is successfull, return the block index of the transaction
-                    Ok(cmc_block_index) => {
-                        // subtract the amount to the callers balance
-                        Self::update_caller_icp_balance(
-                            &caller,
-                            UpdateIcpBalanceArgs::Subtract(amount),
-                        );
-                        // Trigger the call to send the cycles to this canister
-                        match CMC::top_up_self(cmc_block_index).await {
-                            Ok(cycles) => {
-                                transaction_data.cmc_transfer_block_index = Some(cmc_block_index);
-                                transaction_data.icp_amount = Some(amount);
-                                transaction_data.cycles_amount = Some(cycles.clone());
-                                transaction_data.status = TransactionStatus::Success;
-
-                                Self::insert_transaction_data(icp_block_index, transaction_data);
-                                Ok(cycles)
-                            }
-                            Err(err) => {
-                                // if this step fails, the topup needs to be triggered manually with the cmc_block_index
-                                transaction_data.cmc_transfer_block_index = Some(cmc_block_index);
-                                transaction_data.icp_amount = Some(amount);
-                                transaction_data.status = TransactionStatus::CyclesToIndexFailed;
-                                transaction_data.error_message = Some(err.clone());
-                                Self::insert_transaction_data(icp_block_index, transaction_data);
-                                Err(err)
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        transaction_data.icp_amount = Some(amount);
-                        transaction_data.status = TransactionStatus::IcpToCmcFailed;
-                        transaction_data.error_message = Some(err.clone());
-                        Self::insert_transaction_data(icp_block_index, transaction_data);
-
-                        Err(err.to_string())
-                    }
-                }
-            }
-            Err(err) => Err(err),
-        }
-    }
-
-    pub fn get_initialization_status(group_identifier: Principal) -> Option<InitializeStatus> {
-        INITIALIZING.with(|i| i.borrow().get(&group_identifier.to_string()).clone())
-    }
-
-    pub async fn spawn_multisig(
-        caller: Principal,
-        icp_block_index: u64,
-        group_identifier: Principal,
-    ) -> Result<Principal, String> {
-        // Handle the transaction from the user to this canister
-        let top_up_result = Self::top_up_self(caller, icp_block_index).await;
-        match top_up_result {
-            Ok(cycles) => {
-                // Check if the mutlisig is already being initialized
-                if let Some(status) = Self::get_initialization_status(group_identifier.clone()) {
-                    if status == InitializeStatus::Initializing {
-                        return Err("Multsig for this group is being initialized".to_string());
-                    }
-                }
-
-                // Set the status of the multisig to initializing
-                Self::set_is_initializing(&group_identifier, InitializeStatus::Initializing);
-                let spin_up_result = Self::spawn_canister(cycles).await;
-                match spin_up_result {
-                    Ok(canister_id) => {
-                        let install_result = Self::install_canister(caller, canister_id).await;
-                        match install_result {
-                            Ok(_) => {
-                                ENTRIES.with(|e| {
-                                    e.borrow_mut().insert(
-                                        canister_id.to_string(),
-                                        MultisigData {
-                                            canister_id,
-                                            group_identifier: Some(group_identifier),
-                                            created_by: caller,
-                                            created_at: time(),
-                                            updated_at: time(),
-                                        },
-                                    )
-                                });
-
-                                let catalyze_amount = CATALYZE_E8S_FEE - ICP_TRANSACTION_FEE;
-
-                                let catalyze_fee_ledger_args = TransferArgs {
-                                    memo: Memo(0),
-                                    amount: catalyze_amount,
-                                    fee: ICP_TRANSACTION_FEE,
-                                    from_subaccount: None,
-                                    to: AccountIdentifier::new(
-                                        &Principal::from_text(CATALYZE_MULTI_SIG).unwrap(),
-                                        &DEFAULT_SUBACCOUNT,
-                                    ),
-                                    created_at_time: None,
-                                };
-
-                                let _ = Ledger::transfer_icp(catalyze_fee_ledger_args).await;
-                                Self::set_is_initializing(
-                                    &group_identifier,
-                                    InitializeStatus::Done,
-                                );
-                                Ok(canister_id)
-                            }
-                            Err(err) => {
-                                Self::set_is_initializing(
-                                    &group_identifier,
-                                    InitializeStatus::Error,
-                                );
-                                Err(err)
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        Self::set_is_initializing(&group_identifier, InitializeStatus::Error);
-                        Err(err)
-                    }
-                }
-            }
-            Err(err) => {
-                Self::set_is_initializing(&group_identifier, InitializeStatus::Error);
-                Err(err)
-            }
-        }
+    pub fn get_wallets() -> Vec<(Principal, WalletData)> {
+        ENTRIES.with(|e| e.borrow().iter().collect())
     }
 
     pub async fn spawn_canister(cycles: Nat) -> Result<Principal, String> {
@@ -339,10 +67,12 @@ impl Store {
                 compute_allocation: None,
                 memory_allocation: None,
                 freezing_threshold: None,
+                reserved_cycles_limit: None,
+                wasm_memory_limit: None,
             }),
         };
 
-        let result = create_canister(args, Self::nat_to_u128(cycles.clone())).await;
+        let result = create_canister(args, TryFrom::try_from(cycles.0).unwrap()).await;
         match result {
             Ok((canister_record,)) => Ok(canister_record.canister_id),
             Err((_, err)) => Err(err),
@@ -350,16 +80,16 @@ impl Store {
     }
 
     pub async fn install_canister(
-        owner: Principal,
         canister_id: Principal,
+        whitelist: Vec<Principal>,
     ) -> Result<Principal, String> {
-        let multisig_wasm = include_bytes!("../../wasm/multisig.wasm.gz");
+        let wallet_wasm = include_bytes!("../../wasm/wallet.wasm.gz");
 
         let args = InstallCodeArgument {
             mode: CanisterInstallMode::Install,
             canister_id,
-            wasm_module: multisig_wasm.to_vec(),
-            arg: Encode!((&owner)).unwrap(),
+            wasm_module: wallet_wasm.to_vec(),
+            arg: Encode!((&whitelist)).unwrap(),
         };
         let result = install_code(args).await;
 
@@ -369,60 +99,80 @@ impl Store {
         }
     }
 
-    pub async fn withdraw_balance(principal: Principal) -> Result<(), String> {
-        let balance = CALLER_ICP_BALANCE.with(|c| c.borrow().get(&principal.to_string()));
-        if balance.unwrap_or_default() == 0 {
-            return Err("No balance found".to_string());
+    pub fn save_wallet(
+        canister_id: Principal,
+        icp_transfer_blockheight: u64,
+        cmc_transfer_block_height: u64,
+    ) {
+        let wallet = WalletData::new(icp_transfer_blockheight, cmc_transfer_block_height);
+        ENTRIES.with(|e| e.borrow_mut().insert(canister_id, wallet));
+    }
+
+    pub fn get_spawn(blockheight: u64) -> Result<Status, String> {
+        SPAWN_STATUS.with(|s| {
+            s.borrow()
+                .get(&blockheight)
+                .ok_or_else(|| "Error: blockheight not found".to_string())
+        })
+    }
+
+    pub fn get_spawns() -> Vec<(u64, Status)> {
+        SPAWN_STATUS.with(|s| s.borrow().iter().collect())
+    }
+
+    pub fn save_status(block_index: u64, status: Status) {
+        SPAWN_STATUS.with(|s| s.borrow_mut().insert(block_index, status));
+    }
+
+    pub fn validate_whitelist(whitelist: &Vec<Principal>) -> Result<(), String> {
+        if whitelist.len() < 2 {
+            return Err("Whitelist must have at least 2 principals".to_string());
         }
 
-        let ledger_args = TransferArgs {
-            memo: Memo(0),
-            amount: Tokens::from_e8s(balance.unwrap_or_default() - ICP_TRANSACTION_FEE.e8s()),
-            fee: ICP_TRANSACTION_FEE,
-            from_subaccount: None,
-            to: AccountIdentifier::new(&principal, &DEFAULT_SUBACCOUNT),
-            created_at_time: None,
-        };
+        // check for duplicate principals
+        let mut seen = HashSet::new();
 
-        match Ledger::transfer_icp(ledger_args).await {
-            Ok(_) => {
-                Self::update_caller_icp_balance(
-                    &principal,
-                    UpdateIcpBalanceArgs::Subtract(Tokens::from_e8s(balance.unwrap_or_default())),
-                );
-                Ok(())
+        for principal in whitelist.iter() {
+            if seen.contains(principal) {
+                return Err(format!("Duplicate principal: {}", principal));
             }
-            Err(err) => Err(err),
+            seen.insert(principal);
         }
+
+        Ok(())
     }
 
-    fn set_is_initializing(canister_id: &Principal, status: InitializeStatus) {
-        INITIALIZING.with(|i| i.borrow_mut().insert(canister_id.to_string(), status));
-    }
+    pub async fn transfer_ownership(
+        canister_id: Principal,
+        new_owner: Principal,
+    ) -> Result<(), String> {
+        // Get the wallet
+        let mut wallet = ENTRIES.with(|e| {
+            e.borrow()
+                .get(&canister_id)
+                .ok_or_else(|| format!("Error: Canister not found: {}", canister_id))
+        })?;
 
-    fn insert_transaction_data(icp_block_index: u64, transaction_data: TransactionData) {
-        TRANSACTIONS.with(|t| {
-            t.borrow_mut()
-                .insert(icp_block_index, transaction_data.clone())
+        // Check if the caller is the owner
+        if !wallet.is_owner(caller()) {
+            return Err("Error: Caller is not the owner".to_string());
+        }
+
+        // Call the canister to set the new owner
+        let call_result: Result<(Result<Principal, String>,), (RejectionCode, String)> =
+            call::call(canister_id, "set_owner", (new_owner,)).await;
+
+        // Check if the call was successful
+        let call_result = call_result.map_err(|(_, err)| err)?.0;
+
+        // get the wallet canister id from the result
+        let wallet_canister_id = call_result?;
+
+        ENTRIES.with(|e| {
+            e.borrow_mut()
+                .insert(wallet_canister_id, wallet.set_owner(new_owner));
         });
-    }
 
-    fn update_caller_icp_balance(caller: &Principal, args: UpdateIcpBalanceArgs) {
-        CALLER_ICP_BALANCE.with(|c| {
-            let mut balance = c.borrow_mut();
-            let current_balance = balance.get(&caller.to_string()).unwrap_or(0);
-            match args {
-                UpdateIcpBalanceArgs::Add(amount) => {
-                    balance.insert(caller.to_string(), current_balance + amount.e8s());
-                }
-                UpdateIcpBalanceArgs::Subtract(amount) => {
-                    balance.insert(caller.to_string(), current_balance - amount.e8s());
-                }
-            }
-        });
-    }
-
-    fn nat_to_u128(value: Nat) -> u128 {
-        TryFrom::try_from(value.0).unwrap()
+        Ok(())
     }
 }
