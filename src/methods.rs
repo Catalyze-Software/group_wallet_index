@@ -168,6 +168,17 @@ async fn transfer_ownership(canister_id: Principal, new_owner: Principal) -> Res
     Store::transfer_ownership(canister_id, new_owner).await
 }
 
+#[update(guard = "is_not_anonymous")]
+fn _dev_add_wallet(canister_id: Principal) -> Option<WalletData> {
+    if caller()
+        != Principal::from_text("syzio-xu6ca-burmx-4afo2-ojpcw-e75j3-m67o5-s5bes-5vvsv-du3t4-wae")
+            .unwrap()
+    {
+        return None;
+    }
+    Store::add_wallet(canister_id)
+}
+
 #[query]
 pub fn __get_candid_interface_tmp_hack() -> String {
     use candid::export_service;

@@ -64,6 +64,10 @@ impl Store {
         ENTRIES.with(|e| e.borrow().get(principal).clone())
     }
 
+    pub fn add_wallet(principal: Principal) -> Option<WalletData> {
+        ENTRIES.with(|e| e.borrow_mut().insert(principal, WalletData::new(0, 0)))
+    }
+
     pub async fn spawn_canister(cycles: Nat) -> Result<Principal, String> {
         let args = CreateCanisterArgument {
             settings: Some(CanisterSettings {
