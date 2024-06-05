@@ -171,7 +171,7 @@ async fn transfer_ownership(canister_id: Principal, new_owner: Principal) -> Res
 #[update(guard = "is_not_anonymous")]
 fn _dev_add_wallet(canister_id: Principal) -> Option<WalletData> {
     if caller()
-        != Principal::from_text("syzio-xu6ca-burmx-4afo2-ojpcw-e75j3-m67o5-s5bes-5vvsv-du3t4-wae")
+        != Principal::from_text("ledm3-52ncq-rffuv-6ed44-hg5uo-iicyu-pwkzj-syfva-heo4k-p7itq-aqe")
             .unwrap()
     {
         return None;
