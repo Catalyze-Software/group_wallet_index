@@ -4,10 +4,17 @@ use ic_cdk::{caller, id, query, update};
 use crate::{
     logic::{
         cmc::CyclesManagementCanister,
+        guards::{is_dev, is_not_anonymous},
         ledger::Ledger,
-        store::{Store, MIN_E8S_FOR_SPINUP},
+        store::Store,
     },
-    rust_declarations::types::{Status, WalletData},
+    storage::{
+        cell_api::CellStorage, multisig_wasm_storage::MultisigWasmStorage,
+        proxy_storage::ProxyCanisterStorage, state::MIN_E8S_FOR_SPINUP,
+    },
+    types::{
+        error::Error, result::CanisterResult, spawn_status::SpawnStatus, wallet_data::WalletData,
+    },
 };
 
 #[query]
@@ -16,12 +23,12 @@ fn get_cycles() -> u64 {
 }
 
 #[query]
-fn get_spawns() -> Vec<(u64, Status)> {
+fn get_spawns() -> Vec<(u64, SpawnStatus)> {
     Store::get_spawns()
 }
 
 #[query]
-fn get_spawn(blockheight: u64) -> Result<Status, String> {
+fn get_spawn(blockheight: u64) -> CanisterResult<(u64, SpawnStatus)> {
     Store::get_spawn(blockheight)
 }
 
@@ -34,20 +41,19 @@ fn get_wallets() -> Vec<(Principal, WalletData)> {
 async fn spawn_wallet(
     icp_transfer_blockheight: u64,
     whitelist: Vec<Principal>,
-) -> Result<Principal, String> {
+    group_id: u64,
+) -> CanisterResult<Principal> {
     Store::validate_whitelist(&whitelist)?;
 
     // check if spawn already exists
     if Store::get_spawn(icp_transfer_blockheight).is_ok() {
-        return Err(format!(
-            "Duplicate blockheight: {}",
-            icp_transfer_blockheight
-        ));
+        return Err(Error::bad_request()
+            .add_message(format!("Duplicate blockheight: {}", icp_transfer_blockheight).as_str()));
     }
 
     // initialize new spawn status tracker
-    let mut spawn_status = Status::new(Some("Wallet spawn".to_string()));
-    Store::save_status(icp_transfer_blockheight, spawn_status.clone());
+    let mut spawn_status = SpawnStatus::new(Some("Wallet spawn".to_string()));
+    Store::save_status(icp_transfer_blockheight, spawn_status.clone())?;
 
     // validate ICP transaction
     let amount = Ledger::validate_transaction(caller(), icp_transfer_blockheight).await?;
@@ -55,7 +61,7 @@ async fn spawn_wallet(
     Store::save_status(
         icp_transfer_blockheight,
         spawn_status.transaction_valid(amount),
-    );
+    )?;
 
     // if amount is less than minimum required, transfer ICP back to caller
     if amount < MIN_E8S_FOR_SPINUP {
@@ -64,11 +70,14 @@ async fn spawn_wallet(
         Store::save_status(
             icp_transfer_blockheight,
             spawn_status.min_amount_error(transfer_back_blockheight),
-        );
+        )?;
 
-        return Err(format!(
-            "Amount ({}) is less than {}, ICP transferred back: blockheight: {}",
-            amount, MIN_E8S_FOR_SPINUP, transfer_back_blockheight
+        return Err(Error::insufficient_balance().add_message(
+            format!(
+                "Amount ({}) is less than {}, ICP transferred back: blockheight: {}",
+                amount, MIN_E8S_FOR_SPINUP, transfer_back_blockheight
+            )
+            .as_str(),
         ));
     }
 
@@ -78,7 +87,7 @@ async fn spawn_wallet(
     Store::save_status(
         icp_transfer_blockheight,
         spawn_status.transferred_to_cmc(cmc_transfer_block_height),
-    );
+    )?;
 
     // top up this canister with cycles
     let cycles = CyclesManagementCanister::top_up(cmc_transfer_block_height, id()).await?;
@@ -86,7 +95,7 @@ async fn spawn_wallet(
     Store::save_status(
         icp_transfer_blockheight,
         spawn_status.topped_up_self(cycles.clone()),
-    );
+    )?;
 
     // spawn a new canister
     let canister_id = Store::spawn_canister(cycles).await?;
@@ -94,24 +103,26 @@ async fn spawn_wallet(
     Store::save_status(
         icp_transfer_blockheight,
         spawn_status.canister_spawned(canister_id),
-    );
+    )?;
 
     // install the wallet canister
-    let installed_canister_principal = Store::install_canister(canister_id, whitelist).await?;
+    let installed_canister_principal =
+        Store::install_canister(canister_id, whitelist, group_id).await?;
 
     Store::save_status(
         icp_transfer_blockheight,
         spawn_status.canister_installed(installed_canister_principal),
-    );
+    )?;
 
     // save the wallet data
     Store::save_wallet(
         installed_canister_principal,
         icp_transfer_blockheight,
         cmc_transfer_block_height,
-    );
+        group_id,
+    )?;
 
-    Store::save_status(icp_transfer_blockheight, spawn_status.done());
+    Store::save_status(icp_transfer_blockheight, spawn_status.done())?;
 
     Ok(installed_canister_principal)
 }
@@ -120,18 +131,16 @@ async fn spawn_wallet(
 async fn top_up_wallet(
     icp_transfer_blockheight: u64,
     wallet_principal: Principal,
-) -> Result<(), String> {
+) -> CanisterResult<()> {
     // check if spawn already exists
     if Store::get_spawn(icp_transfer_blockheight).is_ok() {
-        return Err(format!(
-            "Duplicate blockheight: {}",
-            icp_transfer_blockheight
-        ));
+        return Err(Error::bad_request()
+            .add_message(format!("Duplicate blockheight: {}", icp_transfer_blockheight).as_str()));
     }
 
     // initialize new status tracker
-    let mut spawn_status = Status::new(Some("Top up wallet".to_string()));
-    Store::save_status(icp_transfer_blockheight, spawn_status.clone());
+    let mut spawn_status = SpawnStatus::new(Some("Top up wallet".to_string()));
+    Store::save_status(icp_transfer_blockheight, spawn_status.clone())?;
 
     // validate ICP transaction
     let amount = Ledger::validate_transaction(caller(), icp_transfer_blockheight).await?;
@@ -139,7 +148,7 @@ async fn top_up_wallet(
     Store::save_status(
         icp_transfer_blockheight,
         spawn_status.transaction_valid(amount),
-    );
+    )?;
 
     // transfer ICP to the cycles management canister
     let cmc_transfer_block_height = Ledger::transfer_icp_to_cmc(amount, wallet_principal).await?;
@@ -147,7 +156,7 @@ async fn top_up_wallet(
     Store::save_status(
         icp_transfer_blockheight,
         spawn_status.transferred_to_cmc(cmc_transfer_block_height),
-    );
+    )?;
 
     // top up this canister with cycles
     let cycles =
@@ -156,23 +165,40 @@ async fn top_up_wallet(
     Store::save_status(
         icp_transfer_blockheight,
         spawn_status.topped_up_self(cycles.clone()),
-    );
+    )?;
 
-    Store::save_status(icp_transfer_blockheight, spawn_status.done());
+    Store::save_status(icp_transfer_blockheight, spawn_status.done())?;
 
     Ok(())
 }
 
 #[update(guard = "is_not_anonymous")]
-async fn transfer_ownership(canister_id: Principal, new_owner: Principal) -> Result<(), String> {
+async fn transfer_ownership(
+    canister_id: Principal,
+    new_owner: Principal,
+) -> CanisterResult<(Principal, WalletData)> {
     Store::transfer_ownership(canister_id, new_owner).await
+}
+
+#[update(guard = "is_dev")]
+fn _dev_add_wallet(canister_id: Principal) -> bool {
+    Store::_test_add_wallet(canister_id).is_ok()
+}
+
+#[update(guard = "is_dev")]
+fn _dev_set_proxy(canister_id: Principal) -> bool {
+    ProxyCanisterStorage::set(canister_id).is_ok()
+}
+
+#[update(guard = "is_dev")]
+fn _dev_upload_multisig_wasm(wasm: Vec<u8>) -> bool {
+    MultisigWasmStorage::set(wasm).is_ok()
 }
 
 #[query]
 pub fn __get_candid_interface_tmp_hack() -> String {
     use candid::export_service;
 
-    use crate::rust_declarations::types::*;
     export_service!();
     __export_service()
 }
@@ -189,11 +215,4 @@ pub fn candid() {
         __get_candid_interface_tmp_hack(),
     )
     .expect("Write failed.");
-}
-
-pub fn is_not_anonymous() -> Result<(), String> {
-    match caller() == Principal::anonymous() {
-        true => Err("Anonymous principal".to_string()),
-        false => Ok(()),
-    }
 }

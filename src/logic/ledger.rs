@@ -6,12 +6,15 @@ use ic_ledger_types::{
     MAINNET_CYCLES_MINTING_CANISTER_ID, MAINNET_LEDGER_CANISTER_ID,
 };
 
-use super::store::{CATALYZE_E8S_FEE, ICP_TRANSACTION_FEE, MEMO_TOP_UP_CANISTER};
+use crate::{
+    storage::state::{CATALYZE_E8S_FEE, ICP_TRANSACTION_FEE, MEMO_TOP_UP_CANISTER},
+    types::{error::Error, result::CanisterResult},
+};
 
 pub struct Ledger;
 
 impl Ledger {
-    pub async fn transfer_icp_back_to_caller(amount: Tokens) -> Result<u64, String> {
+    pub async fn transfer_icp_back_to_caller(amount: Tokens) -> CanisterResult<u64> {
         let send_back_amount = ICP_TRANSACTION_FEE - amount;
 
         let transfer_back_args = TransferArgs {
@@ -25,8 +28,8 @@ impl Ledger {
 
         let blockheight = transfer(MAINNET_LEDGER_CANISTER_ID, transfer_back_args)
             .await
-            .map_err(|e| e.1)?
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| Error::internal().add_message(e.1.as_str()))?
+            .map_err(|e| Error::bad_request().add_message(e.to_string().as_str()))?;
 
         Ok(blockheight)
     }
@@ -34,7 +37,7 @@ impl Ledger {
     pub async fn transfer_icp_to_cmc(
         amount: Tokens,
         canister_id: Principal,
-    ) -> Result<u64, String> {
+    ) -> CanisterResult<u64> {
         let catalyze_amount = CATALYZE_E8S_FEE - ICP_TRANSACTION_FEE;
         let wallet_amount = amount - ICP_TRANSACTION_FEE - catalyze_amount;
 
@@ -52,8 +55,8 @@ impl Ledger {
 
         let blockheight = transfer(MAINNET_LEDGER_CANISTER_ID, multig_spinup_ledger_args)
             .await
-            .map_err(|e| e.1)?
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| Error::internal().add_message(e.1.as_str()))?
+            .map_err(|e| Error::bad_request().add_message(e.to_string().as_str()))?;
 
         Ok(blockheight)
     }
@@ -62,11 +65,11 @@ impl Ledger {
     pub async fn validate_transaction(
         principal: Principal,
         block_index: BlockIndex,
-    ) -> Result<Tokens, String> {
+    ) -> CanisterResult<Tokens> {
         // Get the block
         let block = Self::get_block(block_index)
             .await
-            .ok_or("Block not found".to_string())?;
+            .ok_or(Error::not_found().add_message("Block not found"))?;
 
         // Check if the block has a transaction
         match block.transaction.operation {
@@ -78,16 +81,18 @@ impl Ledger {
                     fee: _,
                 } => {
                     if from != Self::principal_to_account_identifier(principal) {
-                        return Err("Transaction not from the given principal".to_string());
+                        return Err(Error::bad_request()
+                            .add_message("Transaction not from the given principal"));
                     }
                     if to != Self::principal_to_account_identifier(id()) {
-                        return Err("Transaction not to the given principal".to_string());
+                        return Err(Error::bad_request()
+                            .add_message("Transaction not to the given principal"));
                     }
                     Ok(amount)
                 }
-                _ => Err("Not a transfer".to_string()),
+                _ => Err(Error::unsupported().add_message("Not a transfer")),
             },
-            None => Err("No transaction".to_string()),
+            None => Err(Error::not_found().add_message("Transaction not found")),
         }
     }
 

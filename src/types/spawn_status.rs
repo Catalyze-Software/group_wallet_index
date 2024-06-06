@@ -1,58 +1,13 @@
 use candid::{CandidType, Nat, Principal};
-use ic_cdk::{api::time, caller};
 use ic_ledger_types::Tokens;
-use serde::Deserialize;
-use std::borrow::Cow;
+use serde::{Deserialize, Serialize};
 
-use candid::{Decode, Encode};
-use ic_stable_structures::{storable::Bound, Storable};
+use crate::impl_storable_for;
 
-#[derive(CandidType, Deserialize, Clone, Debug)]
-pub struct WalletData {
-    created_by: Principal,
-    owner: Principal,
-    created_at: u64,
-    updated_at: u64,
-    icp_blockheight: u64,
-    cmc_blockheight: u64,
-}
+impl_storable_for!(SpawnStatus);
 
-impl WalletData {
-    pub fn new(icp_blockheight: u64, cmc_blockheight: u64) -> Self {
-        Self {
-            created_by: caller(),
-            owner: caller(),
-            created_at: time(),
-            updated_at: time(),
-            icp_blockheight,
-            cmc_blockheight,
-        }
-    }
-
-    pub fn is_owner(&self, principal: Principal) -> bool {
-        self.owner == principal
-    }
-
-    pub fn set_owner(&mut self, owner: Principal) -> Self {
-        self.owner = owner;
-        self.clone()
-    }
-}
-
-impl Storable for WalletData {
-    fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
-        Cow::Owned(Encode!(self).unwrap())
-    }
-
-    fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
-        Decode!(bytes.as_ref(), Self).unwrap()
-    }
-
-    const BOUND: Bound = Bound::Unbounded;
-}
-
-#[derive(CandidType, Deserialize, Clone, Debug)]
-pub struct Status {
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct SpawnStatus {
     status_type: Option<String>,
     transaction_valid: Option<Tokens>,
     min_amount_error: Option<u64>,
@@ -63,13 +18,13 @@ pub struct Status {
     done: Option<()>,
 }
 
-impl Default for Status {
+impl Default for SpawnStatus {
     fn default() -> Self {
         Self::new(None)
     }
 }
 
-impl Status {
+impl SpawnStatus {
     pub fn new(status_type: Option<String>) -> Self {
         Self {
             status_type,
@@ -117,16 +72,4 @@ impl Status {
         self.done = Some(());
         self.clone()
     }
-}
-
-impl Storable for Status {
-    fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
-        Cow::Owned(Encode!(self).unwrap())
-    }
-
-    fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
-        Decode!(bytes.as_ref(), Self).unwrap()
-    }
-
-    const BOUND: Bound = Bound::Unbounded;
 }
