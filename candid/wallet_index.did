@@ -1,7 +1,28 @@
-type Result = variant { Ok : Status; Err : text };
-type Result_1 = variant { Ok : principal; Err : text };
-type Result_2 = variant { Ok; Err : text };
-type Status = record {
+type Error = record {
+  tag : opt text;
+  info : opt vec text;
+  method_name : opt text;
+  message : opt text;
+  timestamp : nat64;
+  error_type : ErrorKind;
+};
+type ErrorKind = variant {
+  Internal;
+  Duplicate;
+  SerializeError;
+  DeserializeError;
+  InsufficientBalance;
+  NotFound;
+  Unsupported;
+  Unauthorized;
+  NotImplemented;
+  BadRequest;
+};
+type Result = variant { Ok : record { nat64; SpawnStatus }; Err : Error };
+type Result_1 = variant { Ok : principal; Err : Error };
+type Result_2 = variant { Ok; Err : Error };
+type Result_3 = variant { Ok : record { principal; WalletData }; Err : Error };
+type SpawnStatus = record {
   done : opt null;
   canister_spawned : opt principal;
   canister_installed : opt principal;
@@ -18,33 +39,28 @@ type WalletData = record {
   cmc_blockheight : nat64;
   created_at : nat64;
   created_by : principal;
+  group_id : nat64;
   icp_blockheight : nat64;
 };
 service : {
   __get_candid_interface_tmp_hack : () -> (text) query;
-  _dev_add_wallet : (principal) -> (opt WalletData);
+  _dev_add_wallet : (principal) -> (bool);
+  _dev_set_proxy : (principal) -> (bool);
+  _dev_upload_multisig_wasm : (blob) -> (bool);
   get_cycles : () -> (nat64) query;
   get_spawn : (nat64) -> (Result) query;
-  get_spawns : () -> (vec record { nat64; Status }) query;
+  get_spawns : () -> (vec record { nat64; SpawnStatus }) query;
   get_wallets : () -> (vec record { principal; WalletData }) query;
-  multisig_new_proposal_notification : (vec principal, nat64, principal) -> ();
-  multisig_proposal_accept_notification : (
-      vec principal,
-      nat64,
-      principal,
-    ) -> ();
-  multisig_proposal_decline_notification : (
-      vec principal,
-      nat64,
-      principal,
-    ) -> ();
+  multisig_new_proposal_notification : (vec principal, nat64, nat64) -> ();
+  multisig_proposal_accept_notification : (vec principal, nat64, nat64) -> ();
+  multisig_proposal_decline_notification : (vec principal, nat64, nat64) -> ();
   multisig_proposal_status_update_notification : (
       vec principal,
       nat64,
-      principal,
+      nat64,
     ) -> ();
-  multisig_whitelist_notice_notification : (vec principal, principal) -> ();
-  spawn_wallet : (nat64, vec principal) -> (Result_1);
+  multisig_whitelist_notice_notification : (vec principal, nat64) -> ();
+  spawn_wallet : (nat64, vec principal, nat64) -> (Result_1);
   top_up_wallet : (nat64, principal) -> (Result_2);
-  transfer_ownership : (principal, principal) -> (Result_2);
+  transfer_ownership : (principal, principal) -> (Result_3);
 }
