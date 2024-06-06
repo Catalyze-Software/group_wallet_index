@@ -2,7 +2,12 @@ use candid::Principal;
 use ic_cdk::{caller, id, query, update};
 
 use crate::{
-    logic::{cmc::CyclesManagementCanister, ledger::Ledger, store::Store},
+    logic::{
+        cmc::CyclesManagementCanister,
+        guards::{is_dev, is_not_anonymous},
+        ledger::Ledger,
+        store::Store,
+    },
     storage::{
         cell_api::CellStorage, multisig_wasm_storage::MultisigWasmStorage,
         proxy_storage::ProxyCanisterStorage, state::MIN_E8S_FOR_SPINUP,
@@ -210,21 +215,4 @@ pub fn candid() {
         __get_candid_interface_tmp_hack(),
     )
     .expect("Write failed.");
-}
-
-pub fn is_not_anonymous() -> Result<(), String> {
-    match caller() == Principal::anonymous() {
-        true => Err("Anonymous principal".to_string()),
-        false => Ok(()),
-    }
-}
-
-pub fn is_dev() -> Result<(), String> {
-    match caller()
-        == Principal::from_text("ledm3-52ncq-rffuv-6ed44-hg5uo-iicyu-pwkzj-syfva-heo4k-p7itq-aqe")
-            .unwrap()
-    {
-        true => Err("Unuthorized".to_string()),
-        false => Ok(()),
-    }
 }

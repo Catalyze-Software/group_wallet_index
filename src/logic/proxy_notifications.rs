@@ -1,6 +1,6 @@
 use crate::storage::{cell_api::CellStorage, proxy_storage::ProxyCanisterStorage};
 
-use super::store::Store;
+use crate::logic::guards::is_known_wallet;
 use candid::Principal;
 use ic_cdk::{
     api::call::{call, CallResult},
@@ -80,10 +80,4 @@ pub async fn multisig_new_proposal_notification(
         )
         .await;
     }
-}
-
-fn is_known_wallet() -> Result<(), String> {
-    Store::get_wallet(caller())
-        .map(|_| ())
-        .map_err(|_| "Unknown wallet".to_string())
 }
