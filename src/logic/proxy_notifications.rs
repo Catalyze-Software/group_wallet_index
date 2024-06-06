@@ -83,8 +83,7 @@ pub async fn multisig_new_proposal_notification(
 }
 
 fn is_known_wallet() -> Result<(), String> {
-    match Store::get_wallet(caller()).is_err() {
-        true => Err("unauthorized".to_string()),
-        false => Ok(()),
-    }
+    Store::get_wallet(caller())
+        .map(|_| ())
+        .map_err(|_| "Unknown wallet".to_string())
 }
