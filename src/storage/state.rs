@@ -18,7 +18,7 @@ type MemoryManagerStorage = RefCell<MemoryManager<DefaultMemoryImpl>>;
 pub static MEMO_TOP_UP_CANISTER: Memo = Memo(1347768404_u64);
 pub static MEMO_CREATE_CANISTER: Memo = Memo(1095062083_u64);
 pub static ICP_TRANSACTION_FEE: Tokens = Tokens::from_e8s(10000);
-pub static MIN_E8S_FOR_SPINUP: Tokens = Tokens::from_e8s(110000000);
+pub static MIN_CYCLES_FOR_SPINUP: u64 = 5_000_000_000_000;
 pub static CATALYZE_E8S_FEE: Tokens = Tokens::from_e8s(10000000);
 pub static CATALYZE_MULTI_SIG: &str = "fcygz-gqaaa-aaaap-abpaa-cai";
 

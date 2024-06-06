@@ -1,16 +1,17 @@
 use candid::Principal;
 use ic_cdk::{caller, id, query, update};
+use ic_ledger_types::Tokens;
 
 use crate::{
     logic::{
-        cmc::CyclesManagementCanister,
+        cmc::CyclesManagement,
         guards::{is_dev, is_not_anonymous},
         ledger::Ledger,
         store::Store,
     },
     storage::{
         cell_api::CellStorage, multisig_wasm_storage::MultisigWasmStorage,
-        proxy_storage::ProxyCanisterStorage, state::MIN_E8S_FOR_SPINUP,
+        proxy_storage::ProxyCanisterStorage,
     },
     types::{
         error::Error, result::CanisterResult, spawn_status::SpawnStatus, wallet_data::WalletData,
@@ -63,8 +64,10 @@ async fn spawn_wallet(
         spawn_status.transaction_valid(amount),
     )?;
 
+    let minimum_spawn_icp_amount = CyclesManagement::get_minimum_spawn_icp_amount().await?;
+
     // if amount is less than minimum required, transfer ICP back to caller
-    if amount < MIN_E8S_FOR_SPINUP {
+    if amount < minimum_spawn_icp_amount {
         let transfer_back_blockheight = Ledger::transfer_icp_back_to_caller(amount).await?;
 
         Store::save_status(
@@ -75,7 +78,9 @@ async fn spawn_wallet(
         return Err(Error::insufficient_balance().add_message(
             format!(
                 "Amount ({}) is less than {}, ICP transferred back: blockheight: {}",
-                amount, MIN_E8S_FOR_SPINUP, transfer_back_blockheight
+                amount,
+                minimum_spawn_icp_amount.e8s(),
+                transfer_back_blockheight
             )
             .as_str(),
         ));
@@ -90,7 +95,7 @@ async fn spawn_wallet(
     )?;
 
     // top up this canister with cycles
-    let cycles = CyclesManagementCanister::top_up(cmc_transfer_block_height, id()).await?;
+    let cycles = CyclesManagement::top_up(cmc_transfer_block_height, id()).await?;
 
     Store::save_status(
         icp_transfer_blockheight,
@@ -159,8 +164,7 @@ async fn top_up_wallet(
     )?;
 
     // top up this canister with cycles
-    let cycles =
-        CyclesManagementCanister::top_up(cmc_transfer_block_height, wallet_principal).await?;
+    let cycles = CyclesManagement::top_up(cmc_transfer_block_height, wallet_principal).await?;
 
     Store::save_status(
         icp_transfer_blockheight,
@@ -178,6 +182,11 @@ async fn transfer_ownership(
     new_owner: Principal,
 ) -> CanisterResult<(Principal, WalletData)> {
     Store::transfer_ownership(canister_id, new_owner).await
+}
+
+#[update]
+async fn get_minimum_spawn_icp_amount() -> CanisterResult<Tokens> {
+    CyclesManagement::get_minimum_spawn_icp_amount().await
 }
 
 #[update(guard = "is_dev")]
