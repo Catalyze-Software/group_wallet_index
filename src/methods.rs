@@ -189,6 +189,16 @@ async fn get_minimum_spawn_icp_amount() -> CanisterResult<Tokens> {
     CyclesManagement::get_minimum_spawn_icp_amount().await
 }
 
+#[query]
+pub fn icts_name() -> String {
+    "wallet_index".to_string()
+}
+
+#[query]
+pub fn icts_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
 #[update(guard = "is_dev")]
 fn _dev_add_wallet(canister_id: Principal) -> bool {
     Store::_test_add_wallet(canister_id).is_ok()

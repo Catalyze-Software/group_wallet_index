@@ -53,6 +53,8 @@ service : {
   get_spawn : (nat64) -> (Result_1) query;
   get_spawns : () -> (vec record { nat64; SpawnStatus }) query;
   get_wallets : () -> (vec record { principal; WalletData }) query;
+  icts_name : () -> (text) query;
+  icts_version : () -> (text) query;
   multisig_new_proposal_notification : (vec principal, nat64, nat64) -> ();
   multisig_proposal_accept_notification : (vec principal, nat64, nat64) -> ();
   multisig_proposal_decline_notification : (vec principal, nat64, nat64) -> ();
