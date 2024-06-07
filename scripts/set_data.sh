@@ -9,5 +9,5 @@ ic-repl -r ic << END
 identity ${IDENTITY} "~/.config/dfx/identity/${IDENTITY}/identity.pem"
 import controller = "${CANISTER}" as "candid/wallet_index.did"
 call controller._dev_upload_multisig_wasm(file("${FILE}"))
-call controller._dev_set_proxy(principal "onidn-byaaa-aaaap-ahhaq-cai")
+call controller._dev_set_proxy(principal "24swh-4iaaa-aaaap-ahevq-cai")
 END

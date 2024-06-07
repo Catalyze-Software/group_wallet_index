@@ -117,6 +117,13 @@ impl Store {
         SpawnStatusStorage::insert_by_key(blockheight, status)
     }
 
+    pub fn update_status(
+        blockheight: u64,
+        status: SpawnStatus,
+    ) -> CanisterResult<(u64, SpawnStatus)> {
+        SpawnStatusStorage::update(blockheight, status)
+    }
+
     pub fn validate_whitelist(whitelist: &Vec<Principal>) -> CanisterResult<()> {
         if whitelist.len() < 2 {
             return Err(

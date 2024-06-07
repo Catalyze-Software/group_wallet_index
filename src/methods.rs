@@ -59,7 +59,7 @@ async fn spawn_wallet(
     // validate ICP transaction
     let amount = Ledger::validate_transaction(caller(), icp_transfer_blockheight).await?;
 
-    Store::save_status(
+    Store::update_status(
         icp_transfer_blockheight,
         spawn_status.transaction_valid(amount),
     )?;
@@ -70,7 +70,7 @@ async fn spawn_wallet(
     if amount < minimum_spawn_icp_amount {
         let transfer_back_blockheight = Ledger::transfer_icp_back_to_caller(amount).await?;
 
-        Store::save_status(
+        Store::update_status(
             icp_transfer_blockheight,
             spawn_status.min_amount_error(transfer_back_blockheight),
         )?;
@@ -89,7 +89,7 @@ async fn spawn_wallet(
     // transfer ICP to the cycles management canister
     let cmc_transfer_block_height = Ledger::transfer_icp_to_cmc(amount, id()).await?;
 
-    Store::save_status(
+    Store::update_status(
         icp_transfer_blockheight,
         spawn_status.transferred_to_cmc(cmc_transfer_block_height),
     )?;
@@ -97,7 +97,7 @@ async fn spawn_wallet(
     // top up this canister with cycles
     let cycles = CyclesManagement::top_up(cmc_transfer_block_height, id()).await?;
 
-    Store::save_status(
+    Store::update_status(
         icp_transfer_blockheight,
         spawn_status.topped_up_self(cycles.clone()),
     )?;
@@ -105,7 +105,7 @@ async fn spawn_wallet(
     // spawn a new canister
     let canister_id = Store::spawn_canister(cycles).await?;
 
-    Store::save_status(
+    Store::update_status(
         icp_transfer_blockheight,
         spawn_status.canister_spawned(canister_id),
     )?;
@@ -114,7 +114,7 @@ async fn spawn_wallet(
     let installed_canister_principal =
         Store::install_canister(canister_id, whitelist, group_id).await?;
 
-    Store::save_status(
+    Store::update_status(
         icp_transfer_blockheight,
         spawn_status.canister_installed(installed_canister_principal),
     )?;
@@ -127,7 +127,7 @@ async fn spawn_wallet(
         group_id,
     )?;
 
-    Store::save_status(icp_transfer_blockheight, spawn_status.done())?;
+    Store::update_status(icp_transfer_blockheight, spawn_status.done())?;
 
     Ok(installed_canister_principal)
 }
@@ -150,7 +150,7 @@ async fn top_up_wallet(
     // validate ICP transaction
     let amount = Ledger::validate_transaction(caller(), icp_transfer_blockheight).await?;
 
-    Store::save_status(
+    Store::update_status(
         icp_transfer_blockheight,
         spawn_status.transaction_valid(amount),
     )?;
@@ -158,7 +158,7 @@ async fn top_up_wallet(
     // transfer ICP to the cycles management canister
     let cmc_transfer_block_height = Ledger::transfer_icp_to_cmc(amount, wallet_principal).await?;
 
-    Store::save_status(
+    Store::update_status(
         icp_transfer_blockheight,
         spawn_status.transferred_to_cmc(cmc_transfer_block_height),
     )?;
@@ -166,12 +166,12 @@ async fn top_up_wallet(
     // top up this canister with cycles
     let cycles = CyclesManagement::top_up(cmc_transfer_block_height, wallet_principal).await?;
 
-    Store::save_status(
+    Store::update_status(
         icp_transfer_blockheight,
         spawn_status.topped_up_self(cycles.clone()),
     )?;
 
-    Store::save_status(icp_transfer_blockheight, spawn_status.done())?;
+    Store::update_status(icp_transfer_blockheight, spawn_status.done())?;
 
     Ok(())
 }

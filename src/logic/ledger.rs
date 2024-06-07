@@ -15,7 +15,7 @@ pub struct Ledger;
 
 impl Ledger {
     pub async fn transfer_icp_back_to_caller(amount: Tokens) -> CanisterResult<u64> {
-        let send_back_amount = ICP_TRANSACTION_FEE - amount;
+        let send_back_amount = amount - ICP_TRANSACTION_FEE;
 
         let transfer_back_args = TransferArgs {
             memo: Memo(0),
