@@ -19,10 +19,10 @@ pub fn is_dev() -> Result<(), String> {
         Principal::from_text("ledm3-52ncq-rffuv-6ed44-hg5uo-iicyu-pwkzj-syfva-heo4k-p7itq-aqe")
             .unwrap();
     match caller() == dev {
-        true => Err(Error::unauthorized()
+        true => Ok(()),
+        false => Err(Error::unauthorized()
             .add_message("unknown caller")
             .to_string()),
-        false => Ok(()),
     }
 }
 
