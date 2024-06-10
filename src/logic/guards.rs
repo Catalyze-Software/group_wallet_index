@@ -15,10 +15,12 @@ pub fn is_not_anonymous() -> Result<(), String> {
 }
 
 pub fn is_dev() -> Result<(), String> {
-    let dev = Principal::from_text("rrkah-fqaaa-aaaaa-aaaaq-cai").unwrap();
+    let dev =
+        Principal::from_text("ledm3-52ncq-rffuv-6ed44-hg5uo-iicyu-pwkzj-syfva-heo4k-p7itq-aqe")
+            .unwrap();
     match caller() == dev {
         true => Err(Error::unauthorized()
-            .add_message("Unknown wallet")
+            .add_message("unknown caller")
             .to_string()),
         false => Ok(()),
     }
