@@ -1,0 +1,22 @@
+{
+  "governance_canister_id": "umz53-fiaaa-aaaaq-aabmq-cai",
+  "index_canister_id": "ux4b6-7qaaa-aaaaq-aaboa-cai",
+  "ledger_canister_id": "uf2wh-taaaa-aaaaq-aabna-cai",
+  "root_canister_id": "uly3p-iqaaa-aaaaq-aabma-cai",
+  "sns_governance": {
+    "ic": "umz53-fiaaa-aaaaq-aabmq-cai"
+  },
+  "sns_index": {
+    "ic": "ux4b6-7qaaa-aaaaq-aaboa-cai"
+  },
+  "sns_ledger": {
+    "ic": "uf2wh-taaaa-aaaaq-aabna-cai"
+  },
+  "sns_root": {
+    "ic": "uly3p-iqaaa-aaaaq-aabma-cai"
+  },
+  "sns_swap": {
+    "ic": "uc3qt-6yaaa-aaaaq-aabnq-cai"
+  },
+  "swap_canister_id": "uc3qt-6yaaa-aaaaq-aabnq-cai"
+}
