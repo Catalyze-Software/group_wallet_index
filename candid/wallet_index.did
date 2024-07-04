@@ -18,10 +18,10 @@ type ErrorKind = variant {
   NotImplemented;
   BadRequest;
 };
-type Result = variant { Ok : Tokens; Err : Error };
-type Result_1 = variant { Ok : record { nat64; SpawnStatus }; Err : Error };
-type Result_2 = variant { Ok : principal; Err : Error };
-type Result_3 = variant { Ok; Err : Error };
+type Result = variant { Ok; Err : Error };
+type Result_1 = variant { Ok : Tokens; Err : Error };
+type Result_2 = variant { Ok : record { nat64; SpawnStatus }; Err : Error };
+type Result_3 = variant { Ok : principal; Err : Error };
 type Result_4 = variant { Ok : record { principal; WalletData }; Err : Error };
 type SpawnStatus = record {
   done : opt null;
@@ -46,11 +46,12 @@ type WalletData = record {
 service : {
   __get_candid_interface_tmp_hack : () -> (text) query;
   _dev_add_wallet : (principal) -> (bool);
+  _dev_prod_init : () -> (Result);
   _dev_set_proxy : (principal) -> (bool);
   _dev_upload_multisig_wasm : (blob) -> (bool);
   get_cycles : () -> (nat64) query;
-  get_minimum_spawn_icp_amount : () -> (Result);
-  get_spawn : (nat64) -> (Result_1) query;
+  get_minimum_spawn_icp_amount : () -> (Result_1);
+  get_spawn : (nat64) -> (Result_2) query;
   get_spawns : () -> (vec record { nat64; SpawnStatus }) query;
   get_wallets : () -> (vec record { principal; WalletData }) query;
   icts_name : () -> (text) query;
@@ -64,7 +65,7 @@ service : {
       nat64,
     ) -> ();
   multisig_whitelist_notice_notification : (vec principal, nat64) -> ();
-  spawn_wallet : (nat64, vec principal, nat64) -> (Result_2);
-  top_up_wallet : (nat64, principal) -> (Result_3);
+  spawn_wallet : (nat64, vec principal, nat64) -> (Result_3);
+  top_up_wallet : (nat64, principal) -> (Result);
   transfer_ownership : (principal, principal) -> (Result_4);
 }

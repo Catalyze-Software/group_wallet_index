@@ -1,0 +1,5 @@
+#V2
+identity catalyze_production "~/.config/dfx/identity/catalyze_production/identity.pem"\n
+import controller = "o7ouu-niaaa-aaaap-ahhdq-cai" as "candid/wallet_index.did"\n
+call controller._dev_upload_multisig_wasm(file("scripts/multisig.wasm.gz"))\n
+call controller._dev_set_proxy(principal "24swh-4iaaa-aaaap-ahevq-cai")\n

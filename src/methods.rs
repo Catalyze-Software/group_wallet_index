@@ -5,7 +5,7 @@ use ic_ledger_types::Tokens;
 use crate::{
     logic::{
         cmc::CyclesManagement,
-        guards::{is_dev, is_not_anonymous},
+        guards::{is_not_anonymous, is_prod_developer},
         ledger::Ledger,
         store::Store,
     },
@@ -191,7 +191,7 @@ async fn get_minimum_spawn_icp_amount() -> CanisterResult<Tokens> {
 
 #[query]
 pub fn icts_name() -> String {
-    "wallet_index".to_string()
+    env!("CARGO_PKG_NAME").to_string()
 }
 
 #[query]
@@ -199,19 +199,31 @@ pub fn icts_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
-#[update(guard = "is_dev")]
+#[update(guard = "is_prod_developer")]
 fn _dev_add_wallet(canister_id: Principal) -> bool {
     Store::_test_add_wallet(canister_id).is_ok()
 }
 
-#[update(guard = "is_dev")]
+#[update(guard = "is_prod_developer")]
 fn _dev_set_proxy(canister_id: Principal) -> bool {
     ProxyCanisterStorage::set(canister_id).is_ok()
 }
 
-#[update(guard = "is_dev")]
+#[update(guard = "is_prod_developer")]
 fn _dev_upload_multisig_wasm(wasm: Vec<u8>) -> bool {
     MultisigWasmStorage::set(wasm).is_ok()
+}
+
+#[update(guard = "is_prod_developer")]
+fn _dev_prod_init() -> CanisterResult<()> {
+    if id().to_string() != "o7ouu-niaaa-aaaap-ahhdq-cai" {
+        return Err(
+            Error::unsupported().add_message("This canister is not the production canister")
+        );
+    }
+
+    let _ = ProxyCanisterStorage::set(Principal::from_text("2jvhk-5aaaa-aaaap-ahewa-cai").unwrap());
+    Ok(())
 }
 
 #[query]

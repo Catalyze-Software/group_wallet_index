@@ -57,6 +57,7 @@ impl Store {
                 freezing_threshold: None,
                 reserved_cycles_limit: None,
                 wasm_memory_limit: None,
+                log_visibility: None,
             }),
         };
 
