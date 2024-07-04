@@ -12,5 +12,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - github actions for automated proposal creation
 - update guards for certain calls
 
-[Unreleased]: https://github.com/Catalyze-Software/reward_canister/compare/0.1.3...HEAD
-[0.1.3]: https://github.com/Catalyze-Software/reward_canister/compare/0.1.3
+[Unreleased]: https://github.com/Catalyze-Software/multisig_index/compare/0.1.3...HEAD
+[0.1.3]: https://github.com/Catalyze-Software/multisig_index/compare/0.1.3
