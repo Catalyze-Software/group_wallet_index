@@ -125,7 +125,7 @@ impl Store {
         SpawnStatusStorage::update(blockheight, status)
     }
 
-    pub fn validate_whitelist(whitelist: &Vec<Principal>) -> CanisterResult<()> {
+    pub fn validate_whitelist(whitelist: &[Principal]) -> CanisterResult<()> {
         if whitelist.len() < 2 {
             return Err(
                 Error::bad_request().add_message("Whitelist must have at least 2 principals")
